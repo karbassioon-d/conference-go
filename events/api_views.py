@@ -1,6 +1,28 @@
 from django.http import JsonResponse
+from common.json import ModelEncoder
+from .models import Conference, Location, State
+from django.views.decorators.http import require_http_methods
+import json
+from .acls import get_photo
 
-from .models import Conference, Location
+
+class ConferenceListEncoder(ModelEncoder):
+    model = Conference
+    properties = ["name"]
+
+class LocationDetailEncoder(ModelEncoder):
+    model = Location
+    properties = [
+        "name",
+        "city",
+        "room_count",
+        "created",
+        "updated",
+        "picture_url",
+    ]
+
+    def get_extra_data(self, o):
+        return { "state": o.state.abbreviation }
 
 
 def api_list_conferences(request):
@@ -22,17 +44,52 @@ def api_list_conferences(request):
         ]
     }
     """
-    response = []
-    conferences = Conference.objects.all()
-    for conference in conferences:
-        response.append(
-            {
-                "name": conference.name,
-                "href": conference.get_api_url(),
-            }
+    if request.method == "GET":
+        conferences = Conference.objects.all()
+        return JsonResponse(
+            {"conferences": conferences},
+            encoder=ConferenceListEncoder,
         )
-    return JsonResponse({"conferences": response})
+    else:
+        content = json.loads(request.body)
 
+        # Get the Location object and put it in the content dictionary
+        try:
+            location = Location.objects.get(id=content["location"])
+            content["location"] = location
+        except Location.DoesNotExist:
+            return JsonResponse(
+                {"message": "Invalid location id"},
+                status=400,
+            )
+
+        conference = Conference.objects.create(**content)
+        return JsonResponse(
+            conference,
+            encoder=ConferenceDetailEncoder,
+            safe=False,
+        )
+
+class LocationListEncoder(ModelEncoder):
+    model = Location
+    properties = ["name"]
+
+class ConferenceDetailEncoder(ModelEncoder):
+    model = Conference
+    properties = [
+        "name",
+        "description",
+        "max_presentations",
+        "max_attendees",
+        "starts",
+        "ends",
+        "created",
+        "updated",
+        "location",
+    ]
+    encoders = {
+        "location": LocationListEncoder(),
+    }
 
 def api_show_conference(request, id):
     """
@@ -61,23 +118,11 @@ def api_show_conference(request, id):
     """
     conference = Conference.objects.get(id=id)
     return JsonResponse(
-        {
-            "name": conference.name,
-            "starts": conference.starts,
-            "ends": conference.ends,
-            "description": conference.description,
-            "created": conference.created,
-            "updated": conference.updated,
-            "max_presentations": conference.max_presentations,
-            "max_attendees": conference.max_attendees,
-            "location": {
-                "name": conference.location.name,
-                "href": conference.location.get_api_url(),
-            },
-        }
+       conference,
+       encoder=ConferenceDetailEncoder,
+       safe=False
     )
-
-
+@require_http_methods(["GET", "POST"])
 def api_list_locations(request):
     """
     Lists the location names and the link to the location.
@@ -97,9 +142,36 @@ def api_list_locations(request):
         ]
     }
     """
-    return JsonResponse({})
+    if request.method == "GET":
+        locations = Location.objects.all()
+        return JsonResponse(
+            {"locations": locations},
+            encoder=LocationListEncoder,
+        )
+    else:
+        content = json.loads(request.body)
+
+        #Get the state object and put it in the content dictionary
+        try:
+            state = State.objects.get(abbreviation=content["state"])
+            content["state"] = state
+        except State.DoesNotExist:
+            return JsonResponse(
+                {"message": "Invalid state abbreviation"},
+                status=400,
+            )
+        photo = get_photo(content["city"], content["state"].abbreviation)
+        content.update(photo)
+        location = Location.objects.create(**content)
+        return JsonResponse(
+            location,
+            encoder=LocationDetailEncoder,
+            safe=False,
+        )
 
 
+
+@require_http_methods(["DELETE", "GET", "PUT"])
 def api_show_location(request, id):
     """
     Returns the details for the Location model specified
@@ -117,4 +189,37 @@ def api_show_location(request, id):
         "state": the two-letter abbreviation for the state,
     }
     """
-    return JsonResponse({})
+    if request.method == "GET":
+        location = Location.objects.get(id=id)
+        return JsonResponse(
+            location,
+            encoder=LocationDetailEncoder,
+            safe=False,
+        )
+    elif request.method == "DELETE":
+        count, _ = Location.objects.filter(id=id).delete()
+        return JsonResponse({"deleted": count > 0})
+
+    else:
+        content = json.loads(request.body)
+        try:
+            # new code
+            if "state" in content:
+                state = State.objects.get(abbreviation=content["state"])
+                content["state"] = state
+        except State.DoesNotExist:
+            return JsonResponse(
+                {"message": "Invalid state abbreviation"},
+                status=400,
+            )
+
+        # new code
+        Location.objects.filter(id=id).update(**content)
+
+        # copied from get detail
+        location = Location.objects.get(id=id)
+        return JsonResponse(
+            location,
+            encoder=LocationDetailEncoder,
+            safe=False,
+        )
