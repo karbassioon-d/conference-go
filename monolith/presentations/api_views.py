@@ -1,7 +1,8 @@
 from django.http import JsonResponse
 from common.json import ModelEncoder
 from events.api_views import ConferenceDetailEncoder
-from .models import Presentation, Status
+from .models import Presentation
+from events.models import Conference
 import json
 from django.views.decorators.http import require_http_methods
 
@@ -61,8 +62,18 @@ def api_list_presentations(request, conference_id):
             encoder=PresentationListEncoder,
         )
     else:
+        #This is a post method that creates a presentation object
+        #The presentation object requires the strings in the JSON body which can be found in the models.py
+        #presentations also requires 2 models to be assigned, the foreign keys
+        #The status model is assigned by the create function
         content = json.loads(request.body)
-        presentation = Presentation.objects.create(**content)
+        #fetching the conference based on the id passed in the EARL
+        conference = Conference.objects.get(id=conference_id)
+        #That gets assigned to the content dictionary
+        content["conference"] = conference
+        #That dictioinary gets passed through to the Presentation.create() funciton
+        #and puts it in our existing database
+        presentation = Presentation.create(**content)
         return JsonResponse(
             presentation,
             encoder=PresentationDetailEncoder,

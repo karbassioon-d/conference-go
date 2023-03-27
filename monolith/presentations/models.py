@@ -65,3 +65,11 @@ class Presentation(models.Model):
         status = Status.objects.get(name="REJECTED")
         self.status = status
         self.save()
+
+    @classmethod
+    def create(cls, **kwargs):
+        #This is assigning an existing status to the created presentation object
+        kwargs["status"] = Status.objects.get(name="SUBMITTED")
+        presentation = cls(**kwargs)
+        presentation.save()
+        return presentation

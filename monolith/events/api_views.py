@@ -3,7 +3,7 @@ from common.json import ModelEncoder
 from .models import Conference, Location, State
 from django.views.decorators.http import require_http_methods
 import json
-from .acls import get_photo
+from .acls import get_photo, get_weather_data
 
 
 class ConferenceListEncoder(ModelEncoder):
@@ -91,6 +91,7 @@ class ConferenceDetailEncoder(ModelEncoder):
         "location": LocationListEncoder(),
     }
 
+@require_http_methods(["DELETE", "GET", "PUT"])
 def api_show_conference(request, id):
     """
     Returns the details for the Conference model specified
@@ -116,12 +117,40 @@ def api_show_conference(request, id):
         }
     }
     """
-    conference = Conference.objects.get(id=id)
-    return JsonResponse(
-       conference,
-       encoder=ConferenceDetailEncoder,
-       safe=False
-    )
+    if request.method == "GET":
+        conference = Conference.objects.get(id=id)
+        weather = get_weather_data(
+            conference.location.city, conference.location.state.abbreviation
+        )
+        return JsonResponse(
+            {"conference": conference, "weather": weather},
+            encoder=ConferenceDetailEncoder,
+            safe=False
+        )
+    elif request.method =="PUT":
+        content = json.loads(request.body)
+        try:
+            if "location" in content:
+                location = Location.objects.get(id=content["location"])
+                content["location"] = location
+        except Location.DoesNotExist:
+            return JsonResponse(
+                {"message": "Invalid location id"},
+                status=400
+            )
+        Conference.objects.filter(id=id).update(**content)
+
+        conference = Conference.objects.get(id=id)
+
+        return JsonResponse(
+            conference,
+            encoder=ConferenceDetailEncoder,
+            safe=False,
+        )
+    else:
+        count, _ = Conference.objects.filter(id=id).delete()
+        return JsonResponse({"delete": count > 0})
+
 @require_http_methods(["GET", "POST"])
 def api_list_locations(request):
     """
