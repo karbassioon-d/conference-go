@@ -2,6 +2,7 @@ from .keys import PEXELS_API_KEY, OPEN_WEATHER_API_KEY
 import requests
 import json
 
+
 def get_photo(city, state):
     url = "https://api.pexels.com/v1/search"
     headers = {
@@ -17,8 +18,6 @@ def get_photo(city, state):
         return {"picture_url": content["photos"][0]["src"]["original"]}
     except (KeyError, IndexError):
         return {"picture_url": None}
-
-
 
 
 def get_weather_data(city, state):

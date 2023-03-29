@@ -3,7 +3,7 @@ from django.views.decorators.http import require_http_methods
 import json
 from common.json import ModelEncoder
 from .models import Attendee
-from .models import ConferenceVO
+from .models import ConferenceVO, AccountVO
 
 class ConferenceVODetailEncoder(ModelEncoder):
     model = ConferenceVO
@@ -22,8 +22,11 @@ class AttendeeDetailEncoder(ModelEncoder):
         "created",
     ]
     encoders = {
-        "conference": AttendeeListEncoder(),
+        "conference": ConferenceVODetailEncoder(),
     }
+    def get_extra_data(self, o):
+        count = AccountVO.objects.filter(email=o.email).count()
+        return {"has_account": count > 0}
 
 @require_http_methods(["GET", "POST"])
 def api_list_attendees(request, conference_vo_id=None):
